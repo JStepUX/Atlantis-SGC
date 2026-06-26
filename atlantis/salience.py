@@ -58,7 +58,7 @@ def fit_tfidf(chunks: list[Chunk]) -> TfidfModel:
     term_lists = {c.chunk_id: content_terms(c.body) for c in chunks}
 
     vocab: dict[str, int] = {}
-    df = Counter()
+    df: Counter[str] = Counter()
     for terms in term_lists.values():
         for term in set(terms):
             df[term] += 1

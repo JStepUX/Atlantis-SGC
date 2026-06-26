@@ -1,0 +1,13 @@
+# Tool configuration only (no build-system / packaging — Atlantis runs as a
+# source tree via `python -m atlantis`). Install dev tools: requirements-dev.txt.
+
+[tool.mypy]
+python_version = "3.11"
+files = ["atlantis"]
+# Flag type-ignore comments that stop being necessary (e.g. if chromadb tightens
+# or fixes its own typing, the pinned ignores in chroma_writer.py will surface).
+warn_unused_ignores = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

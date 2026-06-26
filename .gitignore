@@ -21,3 +21,13 @@ Data/raw/*
 Thumbs.db
 .idea/
 .vscode/
+
+# ── AIX layer: local-only working context ──
+# Spec docs (active + archived) are local working context; convention READMEs stay.
+docs/specs/*
+!docs/specs/README.md
+docs/ignored/*
+!docs/ignored/README.md
+# pre-commit-qa marker (branch- and time-scoped, regenerated each pass) + per-user overrides
+.claude/state/
+.claude/settings.local.json

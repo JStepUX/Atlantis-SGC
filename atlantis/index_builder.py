@@ -111,10 +111,10 @@ def build_index(
         cid: slug for slug, e in entries.items() for cid in e["children"]
     }
     for c in chunks:
-        slug = entry_of_chunk.get(c.chunk_id)
-        if slug is not None:
-            c.index_entry = slug
-            c.index_line = entry_lines.get(slug)
+        entry_slug = entry_of_chunk.get(c.chunk_id)
+        if entry_slug is not None:
+            c.index_entry = entry_slug
+            c.index_line = entry_lines.get(entry_slug)
         else:
             c.index_entry = None
             c.index_line = None

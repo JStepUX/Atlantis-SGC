@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 import time
+from typing import Any
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -27,7 +28,9 @@ _BAR_W = 22
 # Glyph sets. Pretty requires a UTF-8 capable console; the ASCII set is a safe
 # fallback for legacy Windows code pages (cp1252/cp437) that would otherwise
 # raise UnicodeEncodeError mid-render.
-_GLYPHS = {
+# Values are heterogeneous (icon tuples vs. single chars), so the inner value
+# type is Any — callers know which key yields a tuple vs. a string.
+_GLYPHS: dict[str, dict[str, Any]] = {
     "pretty": {
         "wait": ("·", "dim"),
         "run": ("◐", "bold yellow"),

@@ -93,7 +93,9 @@ class ChromaWriter:
         self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
         self.collection = self.client.get_or_create_collection(
             name=cfg.embeddings.collection_name,
-            embedding_function=self.embedding_fn,
+            # chromadb's own DefaultEmbeddingFunction doesn't satisfy its
+            # EmbeddingFunction protocol under strict typing — library friction.
+            embedding_function=self.embedding_fn,  # type: ignore[arg-type]
             metadata={"hnsw:space": "cosine"},
         )
 
@@ -109,7 +111,9 @@ class ChromaWriter:
             self.collection.upsert(
                 ids=ids[i : i + batch],
                 documents=documents[i : i + batch],
-                metadatas=metadatas[i : i + batch],
+                # list[dict[str, Any]] vs chromadb's Mapping union (list is
+                # invariant); our values are all str|int|float|bool in practice.
+                metadatas=metadatas[i : i + batch],  # type: ignore[arg-type]
             )
         return len(ids)
 

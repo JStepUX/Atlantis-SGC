@@ -1,0 +1,9 @@
+# Dev / QA toolchain — used by scripts/agent/health-check.sh and /pre-commit-qa.
+# Install with:  pip install -r requirements-dev.txt
+-r requirements.txt
+
+pytest>=8.0           # test runner (the smoke test also runs standalone)
+mypy>=1.8             # static type checking
+ruff>=0.5             # linting (health-check skips it if absent)
+types-requests        # stubs for the KoboldCPP HTTP client
+types-PyYAML          # stubs for frontmatter emit/parse
