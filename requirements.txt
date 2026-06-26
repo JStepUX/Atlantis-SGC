@@ -1,0 +1,10 @@
+# Atlantis Salience Pipeline — runtime dependencies
+# Python 3.11+ (tested on 3.14). tomllib is stdlib; no TOML lib needed.
+
+chromadb>=1.5            # vector store + default ONNX MiniLM embeddings
+numpy>=2.0               # TF-IDF math
+PyYAML>=6.0              # frontmatter emit/parse
+requests>=2.31           # KoboldCPP OpenAI-compatible HTTP client
+
+# onnxruntime is pulled in transitively by chromadb for the default
+# all-MiniLM-L6-v2 embedding function (no torch required).

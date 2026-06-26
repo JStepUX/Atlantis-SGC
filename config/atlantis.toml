@@ -1,0 +1,62 @@
+# =============================================================================
+# Atlantis Salience Pipeline — configuration
+# =============================================================================
+# All paths are relative to the project root unless absolute.
+
+[paths]
+raw_dir     = "Data/raw"      # input: raw documents (.md, .txt)
+chunks_dir  = "Data/chunks"   # output: chunk files with frontmatter (human-inspectable)
+chroma_dir  = "Data/chroma"   # output: persistent Chroma DB
+index_json  = "Data/index.json"
+index_md    = "Data/index.md"
+
+[chunking]
+target_tokens = 320   # preferred chunk size
+max_tokens    = 480   # hard ceiling; oversized blocks are split
+min_tokens    = 40    # chunks smaller than this are merged forward when possible
+respect_headings = true
+
+[model]
+# KoboldCPP OpenAI-compatible endpoint. Empty api_key is fine for local.
+base_url    = "http://localhost:5001/v1"
+model       = "koboldcpp/gemma-4-26B-A4B-it-UD-Q5_K_M-new"
+api_key     = ""
+temperature = 0.2
+max_tokens  = 1024
+timeout     = 120     # seconds per classification call
+retries     = 2       # JSON-parse / transport retries before falling back to defaults
+
+[embeddings]
+# Chroma's built-in all-MiniLM-L6-v2 (ONNX). Leave collection_name stable
+# so re-ingests upsert rather than duplicate.
+collection_name = "atlantis"
+# How aliases are folded into the embedding text: "append" | "prepend" | "none"
+alias_strategy  = "append"
+
+[index]
+root_min_count    = 3      # a term must appear >= this many times in a doc to be a root
+root_min_distinct = 2      # a doc needs >= this many distinct roots to get an index entry
+root_top_k        = 8      # max root terms recorded per entry
+sibling_threshold = 0.30   # TF-IDF cosine similarity above which two entries are siblings
+
+[provenance]
+# Defaults applied when the model does not / cannot override.
+source_type      = "human-authored"   # human-authored | model-generated | system-event | conversation
+default_authority = "canonical"       # fallback if model omits
+default_confidence = 0.8              # fallback if model omits
+author           = ""                 # "" -> null in frontmatter
+original_source  = ""                 # "" -> null in frontmatter
+
+[temporal]
+decay_class = "evergreen"   # evergreen | slow-decay | fast-decay | ephemeral
+
+[salience]
+# related_chunks: max cross-document related references per chunk
+related_max = 2
+# minimum topic-set Jaccard overlap to count two chunks as related
+related_min_overlap = 0.20
+
+[tokens]
+# "estimate" = fast offline heuristic (~chars/4).
+# "kobold"   = exact count via KoboldCPP /api/extra/tokencount (per-chunk HTTP call).
+mode = "estimate"

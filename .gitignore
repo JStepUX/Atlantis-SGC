@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Atlantis outputs (regenerable artifacts)
+Data/chroma/
+Data/chunks/
+Data/index.json
+Data/index.md
+
+# Keep raw inputs tracked? Up to you — by default we ignore bulky raw corpora.
+# Comment the next line out if you want raw docs in version control.
+Data/raw/*
+!Data/raw/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

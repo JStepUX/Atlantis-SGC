@@ -1,0 +1,9 @@
+Drop raw documents here (.md, .markdown, .txt, .text).
+
+Subdirectories are fine and are scanned recursively, e.g.:
+
+  Data/raw/combat/kimura-grip-mechanics.md
+  Data/raw/trivia/minnesota-facts.md
+
+Each file's slugified stem becomes its document_slug and chunk_id prefix.
+Then run:  python -m atlantis ingest
