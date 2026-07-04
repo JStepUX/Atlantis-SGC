@@ -1,4 +1,9 @@
-"""Chroma persistence.
+"""Chroma persistence — DORMANT Phase 2b infrastructure.
+
+Runs only under `ingest --full`. Nothing here crosses the sgc-brain/1 pack
+contract (packs are lexical-only); this module is retained for the future
+embeddings-vs-lexical retrieval comparison. Requires chromadb (+ its MiniLM
+ONNX stack), which the default compile path never imports.
 
 Chroma metadata only supports str/int/float/bool (no None, no nested objects),
 so frontmatter is flattened per the schema's "Chroma Metadata Mapping":

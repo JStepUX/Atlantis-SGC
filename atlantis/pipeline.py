@@ -1,11 +1,25 @@
 """End-to-end ingest orchestration.
 
-Order matters: salience needs the whole corpus (TF-IDF), the index needs
-salience's TF-IDF model, and related_chunks needs the model's topics. So:
+Atlantis exists to compile brain packs for the sibling SGC repo, so the
+DEFAULT run is the lean compile path — only the stages whose output the
+`export` command actually reads:
 
-  discover -> chunk -> TF-IDF salience -> classify -> related_chunks
-  -> build index -> assemble+validate frontmatter -> write chunk files
-  -> upsert Chroma -> write index.json / index.md -> report
+  discover -> chunk -> classify -> assemble+validate frontmatter
+  -> write chunk files -> stamp backend into index.json -> report
+
+`full=True` (CLI: `ingest --full`) restores the original vector-pipeline
+tail — TF-IDF salience, related_chunks, the categorical index, and the
+Chroma/MiniLM upsert. That tail is retained as dormant infrastructure for
+the Phase 2b embeddings-vs-lexical comparison and a future sgc-brain/2
+(salience-weighted retrieval); it is NOT part of the current pack contract.
+Tail ordering when it runs: salience needs the whole corpus (TF-IDF), the
+index needs salience's TF-IDF model, and related_chunks needs the model's
+topics.
+
+Either mode writes index.json with the `backend` stamp — the one key the
+exporter reads (source.stub provenance). Do not decouple that stamp from
+the file write; a missing/unstamped index.json silently degrades every
+pack to stub=false.
 """
 
 from __future__ import annotations
@@ -17,11 +31,14 @@ from datetime import datetime, timezone
 from .chunking import chunk_document, discover_documents
 from .classify import make_classifier
 from .config import Config
-from .index_builder import build_index
 from .models import Chunk
 from .reporting import Reporter, ConsoleReporter
-from .salience import compute_salience, fit_tfidf
 from .schema import assemble_frontmatter, validate_frontmatter, write_chunk_file
+
+# The Phase 2b tail (salience/index/chroma) imports lazily inside its `full`
+# branches — salience and index_builder pull in numpy, chroma_writer pulls in
+# chromadb + the MiniLM ONNX stack. A compile-only environment needs none of
+# them installed.
 
 
 @dataclass
@@ -71,6 +88,7 @@ def run_ingest(
     limit: int | None = None,
     write_files: bool = True,
     reporter: Reporter | None = None,
+    full: bool = False,
 ) -> IngestReport:
     report = IngestReport()
     rep = reporter or ConsoleReporter()
@@ -102,11 +120,19 @@ def run_ingest(
             return report
         rep.stage("chunk", "done", f"{len(all_chunks)} chunks")
 
-        # 2. corpus TF-IDF salience
-        rep.stage("salience", "start")
-        tfidf = fit_tfidf(all_chunks)
-        compute_salience(all_chunks, tfidf)
-        rep.stage("salience", "done", "TF-IDF fitted")
+        # 2. corpus TF-IDF salience — Phase 2b tail only. Skipping is safe:
+        # classification never reads the salience scores, and the Chunk
+        # defaults (0.0) pass validate_frontmatter's range checks.
+        tfidf = None
+        if full:
+            from .salience import compute_salience, fit_tfidf  # lazy: numpy
+
+            rep.stage("salience", "start")
+            tfidf = fit_tfidf(all_chunks)
+            compute_salience(all_chunks, tfidf)
+            rep.stage("salience", "done", "TF-IDF fitted")
+        else:
+            rep.stage("salience", "done", "skipped (compile mode; --full restores)")
 
         # 3. classification (small model)
         classifier = make_classifier(cfg, use_stub=use_stub)
@@ -140,11 +166,29 @@ def run_ingest(
             f"{report.classified_ok} ok / {report.classify_fallbacks} fallback",
         )
 
-        # 4. relations + index + assemble + validate + write chunk files
-        rep.stage("index", "start")
-        _compute_related(all_chunks, cfg)
-        index_data = build_index(all_chunks, tfidf, cfg, created_at)
-        report.entries = index_data["corpus_stats"]["total_entries"]
+        # 4. relations + index + assemble + validate + write chunk files.
+        # related_chunks and the categorical index are Phase 2b tail; the
+        # compile path writes a minimal index.json whose only load-bearing
+        # key is `backend` (the exporter's source.stub provenance).
+        md_text = ""
+        if full:
+            from .index_builder import build_index  # lazy: numpy
+
+            rep.stage("index", "start")
+            _compute_related(all_chunks, cfg)
+            index_data = build_index(all_chunks, tfidf, cfg, created_at)
+            report.entries = index_data["corpus_stats"]["total_entries"]
+            md_text = index_data.pop("_md_text", "")
+        else:
+            rep.stage("index", "done", "skipped (compile mode; --full restores)")
+            index_data = {
+                "generated_at": created_at,
+                "corpus_stats": {
+                    "total_documents": report.documents,
+                    "total_chunks": report.chunks,
+                    "total_entries": 0,
+                },
+            }
 
         for c in all_chunks:
             c.frontmatter = assemble_frontmatter(c, cfg, created_at)
@@ -155,24 +199,31 @@ def run_ingest(
             for c in all_chunks:
                 write_chunk_file(c, cfg.paths.chunks_dir)
 
-        md_text = index_data.pop("_md_text", "")
         # Record which classifier built this corpus so the exporter can stamp
         # source.stub from disk instead of trusting an operator-supplied flag.
+        # This write happens in BOTH modes — it's the one load-bearing part of
+        # index.json for the pack contract.
         index_data["backend"] = report.backend
         cfg.paths.index_json.parent.mkdir(parents=True, exist_ok=True)
         cfg.paths.index_json.write_text(
             json.dumps(index_data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-        cfg.paths.index_md.write_text(md_text, encoding="utf-8")
-        rep.stage("index", "done", f"{report.entries} entries")
+        if full:
+            cfg.paths.index_md.write_text(md_text, encoding="utf-8")
+            rep.stage("index", "done", f"{report.entries} entries")
 
-        # 5. Chroma upsert
-        rep.stage("chroma", "start")
-        from .chroma_writer import ChromaWriter  # lazy import: chromadb is heavy
+        # 5. Chroma upsert — Phase 2b tail. The compile path never pays the
+        # chromadb import + MiniLM ONNX embedding cost: no exported field is
+        # (or may be) a vector.
+        if full:
+            rep.stage("chroma", "start")
+            from .chroma_writer import ChromaWriter  # lazy import: chromadb is heavy
 
-        writer = ChromaWriter(cfg)
-        n = writer.upsert_chunks(all_chunks)
-        report.chroma_count = writer.count()
-        rep.stage("chroma", "done", f"{report.chroma_count} vectors")
+            writer = ChromaWriter(cfg)
+            writer.upsert_chunks(all_chunks)
+            report.chroma_count = writer.count()
+            rep.stage("chroma", "done", f"{report.chroma_count} vectors")
+        else:
+            rep.stage("chroma", "done", "skipped (compile mode; --full restores)")
 
     return report

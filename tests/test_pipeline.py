@@ -36,9 +36,10 @@ def _make_config(tmp: Path):
     return cfg
 
 
-def test_stub_ingest_is_schema_valid():
-    # ignore_cleanup_errors: Chroma keeps the HNSW/SQLite file handles open for
-    # the life of the process, so Windows can't delete the temp dir on exit.
+def test_stub_ingest_compile_mode_is_schema_valid():
+    # The DEFAULT ingest: the lean compile path. No salience, no index build,
+    # no Chroma — but chunk files land, validation runs, and index.json still
+    # carries the backend stamp (the exporter's stub-provenance source).
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
         tmp = Path(td)
         cfg = _make_config(tmp)
@@ -49,15 +50,41 @@ def test_stub_ingest_is_schema_valid():
         assert report.documents == 3, report.documents
         assert report.chunks > 0, report.chunks
         assert report.validation_problems == [], report.validation_problems
-        assert report.chroma_count == report.chunks
-        assert (tmp / "index.json").exists()
-        assert (tmp / "index.md").exists()
+        # The Phase 2b tail did not run.
+        assert report.chroma_count == 0
+        assert report.entries == 0
+        assert not (tmp / "chroma").exists()
+        assert not (tmp / "index.md").exists()
+        # The load-bearing artifacts did.
+        import json
+        index = json.loads((tmp / "index.json").read_text(encoding="utf-8"))
+        assert index["backend"] == "StubClassifier"
 
         # Every emitted chunk file re-validates from disk.
         chunk_files = list((tmp / "chunks").glob("*.md"))
         assert len(chunk_files) == report.chunks
         for f in chunk_files:
             assert f.read_text(encoding="utf-8").startswith("---\n")
+
+
+def test_stub_ingest_full_mode_runs_the_phase2b_tail():
+    # --full restores the original vector pipeline end-to-end.
+    # ignore_cleanup_errors: Chroma keeps the HNSW/SQLite file handles open for
+    # the life of the process, so Windows can't delete the temp dir on exit.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+        tmp = Path(td)
+        cfg = _make_config(tmp)
+        report = run_ingest(
+            cfg, use_stub=True, write_files=True, reporter=NullReporter(), full=True
+        )
+
+        assert report.documents == 3, report.documents
+        assert report.chunks > 0, report.chunks
+        assert report.validation_problems == [], report.validation_problems
+        assert report.chroma_count == report.chunks
+        assert (tmp / "index.json").exists()
+        assert (tmp / "index.md").exists()
+        assert len(list((tmp / "chunks").glob("*.md"))) == report.chunks
 
 
 def test_topic_path_and_specificity_derivation():
@@ -73,6 +100,7 @@ def test_topic_path_and_specificity_derivation():
 
 
 if __name__ == "__main__":
-    test_stub_ingest_is_schema_valid()
+    test_stub_ingest_compile_mode_is_schema_valid()
+    test_stub_ingest_full_mode_runs_the_phase2b_tail()
     test_topic_path_and_specificity_derivation()
     print("OK: all smoke tests passed")

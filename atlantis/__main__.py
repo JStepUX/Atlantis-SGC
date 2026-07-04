@@ -1,11 +1,17 @@
-"""Atlantis CLI.
+"""Atlantis CLI — the brain-pack compiler for the sibling SGC repo.
 
-  python -m atlantis ingest            # full pipeline: raw -> chunks -> Chroma
-  python -m atlantis ingest --stub     # offline (no model) end-to-end dry run
-  python -m atlantis ingest --limit 5  # only the first 5 chunks
-  python -m atlantis query "kimura grip"   # sanity-check retrieval
-  python -m atlantis doctor            # check config, model reachability, deps
+The working loop:
+
+  python -m atlantis ingest --stub     # raw docs -> chunk files (no model)
+  python -m atlantis ingest            # same, with KoboldCPP enrichment
+  (hand-edit aliases/frontmatter in Data/chunks/*.md as needed)
   python -m atlantis export --out pack.json   # chunks -> sgc-brain/1 pack
+  python -m atlantis doctor            # pack-readiness + environment check
+
+Dormant Phase 2b infrastructure (not part of the pack contract):
+
+  python -m atlantis ingest --full     # + TF-IDF salience, index, Chroma/MiniLM
+  python -m atlantis query "kimura grip"   # probe the Chroma collection (--full builds only)
 """
 
 from __future__ import annotations
@@ -29,16 +35,18 @@ def _cmd_ingest(args) -> int:
         limit=args.limit,
         write_files=not args.no_files,
         reporter=reporter,
+        full=args.full,
     )
     print("\n=== Ingest summary ===")
     print(f"  backend           : {report.backend}")
     print(f"  documents         : {report.documents}")
     print(f"  chunks            : {report.chunks}")
-    print(f"  index entries     : {report.entries}")
     print(f"  classified ok     : {report.classified_ok}")
     print(f"  classify fallbacks: {report.classify_fallbacks}")
     print(f"  validation issues : {len(report.validation_problems)}")
-    print(f"  chroma collection : {report.chroma_count} vectors")
+    if args.full:
+        print(f"  index entries     : {report.entries}")
+        print(f"  chroma collection : {report.chroma_count} vectors")
     if report.validation_problems:
         print("  --- validation problems (up to 10) ---")
         for p in report.validation_problems[:10]:
@@ -52,7 +60,7 @@ def _cmd_query(args) -> int:
     cfg = load_config(args.config)
     writer = ChromaWriter(cfg)
     if writer.count() == 0:
-        print("Collection is empty. Run `python -m atlantis ingest` first.")
+        print("Collection is empty. Run `python -m atlantis ingest --full` first (the default compile-mode ingest skips Chroma).")
         return 1
     res = writer.query(args.text, n=args.n)
     ids = res["ids"][0]
@@ -72,34 +80,58 @@ def _cmd_query(args) -> int:
 
 
 def _cmd_doctor(args) -> int:
+    """Pack-readiness first; the Phase 2b stack is reported, never required."""
     cfg = load_config(args.config)
     print("=== Atlantis doctor ===")
     print(f"project root : {cfg.root}")
     print(f"raw_dir      : {cfg.paths.raw_dir}  (exists={cfg.paths.raw_dir.exists()})")
-    print(f"chroma_dir   : {cfg.paths.chroma_dir}")
-    print(f"model        : {cfg.model.model} @ {cfg.model.base_url}")
+    print(f"chunks_dir   : {cfg.paths.chunks_dir}  (exists={cfg.paths.chunks_dir.exists()})")
 
-    # dependency check
+    # Compile-path dependencies — these gate the exit code.
     deps_ok = True
-    for mod in ("chromadb", "numpy", "yaml", "requests"):
+    for mod in ("yaml",):
         try:
             __import__(mod)
-            print(f"  dep {mod:<10}: ok")
+            print(f"  dep {mod:<10}: ok  (compile path)")
         except ImportError as e:
             deps_ok = False
-            print(f"  dep {mod:<10}: MISSING ({e})")
+            print(f"  dep {mod:<10}: MISSING ({e})  (compile path — required)")
 
-    # model reachability
-    from .classify import KoboldClassifier
+    # Pack readiness: chunk files to export + the provenance stamp.
+    chunk_count = (
+        len(list(cfg.paths.chunks_dir.glob("*.md"))) if cfg.paths.chunks_dir.exists() else 0
+    )
+    print(f"chunk files  : {chunk_count} in chunks_dir (export reads these)")
+    from .export import read_backend_stub
 
-    ok, msg = KoboldClassifier(cfg).healthcheck()
-    print(f"model        : {'ok' if ok else 'UNREACHABLE'} -> {msg}")
+    if cfg.paths.index_json.exists():
+        stub = read_backend_stub(cfg.paths.index_json)
+        print(f"index.json   : present — backend stamp -> packs export as stub={stub}")
+    else:
+        print("index.json   : MISSING — run ingest; without it packs export as stub=false")
 
     # raw doc count
     from .chunking import discover_documents
 
     docs = discover_documents(cfg.paths.raw_dir)
     print(f"raw documents: {len(docs)} found")
+
+    # Optional enrichment (KoboldCPP classification) — informative only:
+    # --stub compiles packs with no model at all.
+    from .classify import KoboldClassifier
+
+    ok, msg = KoboldClassifier(cfg).healthcheck()
+    print(f"model        : {'ok' if ok else 'unreachable'} -> {msg}")
+    print(f"               ({cfg.model.model} @ {cfg.model.base_url}; optional — --stub needs no model)")
+
+    # Dormant Phase 2b stack (--full ingests only) — informative only.
+    for mod in ("numpy", "chromadb", "requests"):
+        try:
+            __import__(mod)
+            print(f"  dep {mod:<10}: ok  (--full / enrichment only)")
+        except ImportError:
+            print(f"  dep {mod:<10}: absent  (fine unless using --full{' or KoboldCPP' if mod == 'requests' else ''})")
+
     return 0 if deps_ok else 1
 
 
@@ -153,19 +185,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default=None, help="path to atlantis.toml")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_ing = sub.add_parser("ingest", help="process raw docs into chunks + Chroma")
+    p_ing = sub.add_parser("ingest", help="process raw docs into chunk files (the export source)")
     p_ing.add_argument("--stub", action="store_true", help="offline classifier (no model)")
     p_ing.add_argument("--limit", type=int, default=None, help="process only N chunks")
-    p_ing.add_argument("--no-files", action="store_true", help="skip writing chunk .md files")
+    p_ing.add_argument(
+        "--no-files",
+        action="store_true",
+        help="skip writing chunk .md files (NOTE: export reads those files — a --no-files ingest produces nothing to export)",
+    )
     p_ing.add_argument("--plain", action="store_true", help="plain log instead of the live dashboard")
+    p_ing.add_argument(
+        "--full",
+        action="store_true",
+        help="also run the dormant Phase 2b tail: TF-IDF salience, categorical index, Chroma/MiniLM upsert",
+    )
     p_ing.set_defaults(func=_cmd_ingest)
 
-    p_q = sub.add_parser("query", help="query the Chroma collection")
+    p_q = sub.add_parser("query", help="probe the Chroma collection (Phase 2b; needs a --full ingest)")
     p_q.add_argument("text", help="query text")
     p_q.add_argument("-n", type=int, default=5, help="number of results")
     p_q.set_defaults(func=_cmd_query)
 
-    p_doc = sub.add_parser("doctor", help="check environment, deps, model")
+    p_doc = sub.add_parser("doctor", help="pack-readiness + environment check")
     p_doc.set_defaults(func=_cmd_doctor)
 
     p_exp = sub.add_parser("export", help="export chunks as an sgc-brain/1 knowledge pack")

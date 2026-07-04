@@ -17,7 +17,9 @@ from __future__ import annotations
 
 from typing import Iterable
 
-# (key, display label) — order defines dashboard row order.
+# (key, display label) — order defines dashboard row order. In the default
+# compile mode, salience/index/chroma report "done (skipped)" — they run only
+# under `ingest --full` (dormant Phase 2b tail).
 STAGES: list[tuple[str, str]] = [
     ("discover", "Discover"),
     ("chunk", "Chunk"),
