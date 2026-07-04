@@ -2,9 +2,14 @@ If you ever encounter something in the project that surprises you, please alert 
 
 ## What this is
 
-**Atlantis** is a domain-agnostic pipeline that processes raw documents into
-salience-annotated chunks and writes them to a Chroma vector database, following
-the [Atlantis Salience Schema v1.0](atlantis-salience-schema-v1.md). It also
+**Atlantis** is the offline **brain-pack compiler** for the sibling SGC repo
+(`D:/Bolt-On/sgc`): it processes raw documents into frontmatter-annotated chunk
+files (the [Atlantis Salience Schema v1.0](atlantis-salience-schema-v1.md)) and
+**exports them as `sgc-brain/1` knowledge packs** that SGC mounts per chat.
+Only lexical fields cross that contract — text, summary, topics, hand-editable
+aliases — never embeddings. The original Chroma/vector tail is retained as
+**dormant Phase 2b infrastructure** (`ingest --full`) for a future
+embeddings-vs-lexical retrieval comparison; it is not the mission. Atlantis also
 carries the **AIX process layer** (agent fleet in `.claude/agents/`, skills in
 `.claude/skills/`, the pre-commit gate in `.claude/hooks/`, documentation
 conventions in `docs/`, and agent utility scripts in `scripts/agent/`).
@@ -18,27 +23,32 @@ and load when triggered.
 ## Project identity
 
 Atlantis is a single Python package, `atlantis/`, driven by a CLI
-(`python -m atlantis <ingest|query|doctor|export>`). The pipeline is a fixed sequence:
-**discover → chunk → TF-IDF salience → classify → relate → index → assemble →
-Chroma** (see `atlantis/pipeline.py`). Chunking is deterministic; only the
-**classification** stage calls a model — a local **KoboldCPP / Gemma** server over
-its OpenAI-compatible endpoint (`config/atlantis.toml [model]`). Embeddings use
-Chroma's bundled ONNX MiniLM (not a remote API). Outputs land under `Data/`
-(`chunks/`, `chroma/`, `index.json`, `index.md`); raw inputs go in `Data/raw/`.
-The frontmatter schema each chunk must satisfy is the load-bearing contract —
-`atlantis/schema.py` assembles and validates it. `export` maps active chunks
-onto an `sgc-brain/1` knowledge pack for the sibling SGC repo
-(`atlantis/export.py`) — lexical fields only; embeddings never cross.
+(`python -m atlantis <ingest|export|doctor|query>`). The default ingest is the
+**compile path**: **discover → chunk → classify → assemble → write chunk
+files → stamp `backend` into index.json** (see `atlantis/pipeline.py`).
+Chunking is deterministic; only the **classification** stage may call a model —
+a local **KoboldCPP / Gemma** server (`config/atlantis.toml [model]`), or the
+fully-offline `--stub` classifier (packs then carry honest `stub: true`
+provenance, read from index.json's `backend` stamp). `export` maps active
+chunks onto an `sgc-brain/1` pack (`atlantis/export.py`) — lexical fields only.
+Raw inputs go in `Data/raw/`; chunk files in `Data/chunks/` are hand-editable
+(aliases especially — the pack's synonym bridge) and are **overwritten by
+re-ingest**, so edit-then-export, and re-ingest only when sources change.
+`ingest --full` additionally runs the dormant Phase 2b tail (TF-IDF salience →
+categorical index → Chroma/MiniLM), whose outputs never reach a pack.
 
 ## Stack
 
 - **Language:** Python 3.11+ (developed on 3.14).
-- **Vector store / embeddings:** chromadb (default ONNX `all-MiniLM-L6-v2`).
-- **Numerics:** numpy (TF-IDF).
-- **Frontmatter:** PyYAML. **HTTP (KoboldCPP):** requests. **Config:** tomllib (stdlib).
-- **Classification model:** local KoboldCPP server (Gemma), OpenAI-compatible API.
-- **Tests:** the offline smoke test `tests/test_pipeline.py` (pytest-compatible;
-  pytest not required). Run with `python tests/test_pipeline.py`.
+- **Compile path:** PyYAML (frontmatter — the only hard dependency),
+  tomllib (stdlib, config), requests (only for non-stub KoboldCPP enrichment).
+- **Dormant Phase 2b tail** (`ingest --full` only, lazily imported): chromadb
+  (ONNX `all-MiniLM-L6-v2` embeddings) + numpy (TF-IDF salience/index). A
+  compile-only environment can omit both.
+- **Classification model (optional):** local KoboldCPP server (Gemma),
+  OpenAI-compatible API; `--stub` compiles packs with no model at all.
+- **Tests:** `tests/test_pipeline.py` + `tests/test_export.py` (pytest-
+  compatible; pytest not required). Run with `python tests/<file>`.
 - The `anthropic` SDK is installed in the environment but the pipeline does not
   use it — classification goes through KoboldCPP.
 
@@ -63,7 +73,7 @@ grepping, or health checking, check if one of these already does it.** Run via
 | `git-context.sh` | Status, diffs, branch info for commits/PRs | `git-context.sh [base-branch]` |
 | `health-check.sh` | compileall + ruff/mypy (if present) + tests + git + TODO counts | `health-check.sh` |
 | `trace-imports.sh` | Who imports a module/symbol (2-level) | `trace-imports.sh <module-or-symbol>` |
-| `schema-dump.sh` | Frontmatter schema + config + Chroma collection stats | `schema-dump.sh` |
+| `schema-dump.sh` | Frontmatter schema + config (+ Chroma stats when a --full build exists) | `schema-dump.sh` |
 | `test-scan.sh` | Test gap analysis + metrics (pytest conventions) | `test-scan.sh [--scope <dir>]` |
 | `extract-interfaces.sh` | Public signature extraction (ast) | `extract-interfaces.sh <file-or-dir>` |
 | `read-docs.sh` | Vendored docs + Context7 pointers for post-cutoff deps | `read-docs.sh <package>` |
@@ -91,18 +101,22 @@ bash scripts/agent/read-docs.sh --index     # vendored docs + Context7 coverage
 
 ## Conventions
 
-- **Tests — the smoke test, real data over mocks.** `tests/test_pipeline.py` runs
-  the full pipeline in `--stub` mode (no model) and validates the schema. Prefer
-  real data; the only sanctioned mock-like shortcut is the `StubClassifier`
-  (offline classification). Run the suite, not just the new test.
-- **Verify model/IO changes against the real services.** After changing anything
-  that shapes classification, salience, or storage, run an actual ingest against
-  the running KoboldCPP server and inspect the output (chunk files / `query`) —
-  don't trust code inspection alone. Core Value #5: build the check, don't trust
-  the self-report.
-- **Determinism.** Chunking, TF-IDF, and the index must be reproducible across
-  runs (same input → same `chunk_id`s and scores). Don't introduce wall-clock or
-  RNG into those stages.
+- **Tests — the smoke tests, real data over mocks.** `tests/test_pipeline.py`
+  (compile mode + `--full` mode) and `tests/test_export.py` run stub-mode
+  ingests against the bundled fixtures and validate the schema and the pack
+  contract. Prefer real data; the only sanctioned mock-like shortcut is the
+  `StubClassifier` (offline classification). Run both suites, not just the new test.
+- **Verify against the pack contract, not just code inspection.** After changing
+  anything that shapes chunking, classification, or the exporter, run a stub
+  ingest into a scratch dir, `export` from it, and inspect the pack (field
+  mapping, stub provenance, chunk texts) — that JSON is what SGC consumes.
+  When the change targets non-stub enrichment specifically, also run a real
+  ingest against the running KoboldCPP server and read the chunk frontmatter it
+  produced. Core Value #5: build the check, don't trust the self-report.
+- **Determinism.** Chunking must be reproducible across runs (same input →
+  same `chunk_id`s), and export must be a pure function of the chunk files +
+  the built_at stamp. The `--full` tail's TF-IDF/index scores are held to the
+  same rule. Don't introduce wall-clock or RNG into those stages.
 
 ## Core Values
 

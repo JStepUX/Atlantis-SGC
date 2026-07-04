@@ -1,12 +1,16 @@
 # =============================================================================
-# Atlantis Salience Pipeline — configuration
+# Atlantis — brain-pack compiler for the sibling SGC repo — configuration
 # =============================================================================
 # All paths are relative to the project root unless absolute.
+# The compile path (default `ingest` + `export`) uses [paths], [chunking],
+# [provenance], [temporal], [tokens], and — for non-stub enrichment — [model].
+# [embeddings], [index], and [salience] configure the dormant Phase 2b tail
+# (`ingest --full` only); they do not affect packs.
 
 [paths]
 raw_dir     = "Data/raw"      # input: raw documents (.md, .txt)
-chunks_dir  = "Data/chunks"   # output: chunk files with frontmatter (human-inspectable)
-chroma_dir  = "Data/chroma"   # output: persistent Chroma DB
+chunks_dir  = "Data/chunks"   # output: chunk files with frontmatter — THE export source (hand-editable)
+chroma_dir  = "Data/chroma"   # output: Chroma DB (--full ingests only; not a pack input)
 index_json  = "Data/index.json"
 index_md    = "Data/index.md"
 
@@ -27,8 +31,8 @@ timeout     = 120     # seconds per classification call
 retries     = 2       # JSON-parse / transport retries before falling back to defaults
 
 [embeddings]
-# Chroma's built-in all-MiniLM-L6-v2 (ONNX). Leave collection_name stable
-# so re-ingests upsert rather than duplicate.
+# Phase 2b only (`ingest --full`). Chroma's built-in all-MiniLM-L6-v2 (ONNX).
+# Leave collection_name stable so re-ingests upsert rather than duplicate.
 collection_name = "atlantis"
 # How aliases are folded into the embedding text: "append" | "prepend" | "none"
 alias_strategy  = "append"

@@ -2,7 +2,7 @@
 
 **Purpose:** Define the YAML frontmatter schema emitted by the Atlantis processing pipeline for every chunk written to a salience database. This schema is domain-agnostic — it must describe BJJ techniques, Minnesota trivia, Star Wars lore, couscous recipes, and anything else with equal fidelity.
 
-**Consumers:** SGC orchestrator (retrieval at runtime), Chroma vector DB (metadata filtering), humans (debugging and inspection).
+**Consumers:** the `sgc-brain/1` pack exporter (`atlantis/export.py` — the primary consumer; it reads chunk_id, document_title, body, summary, topics[].topic, aliases, source_file, document_slug, navigation.current, tokens, status), humans (hand-editing aliases, debugging), and — dormant, Phase 2b (`ingest --full`) only — the Chroma vector DB (metadata filtering).
 
 **Design principle:** The structure is the aperture. The content is the light that passes through it. Domain lives in the *values*, never in the *field names*.
 
@@ -289,6 +289,9 @@ to muscle the arm backward...
 ---
 
 ## Chroma Metadata Mapping
+
+> **Dormant — Phase 2b only.** This mapping applies to `ingest --full` builds;
+> nothing below reaches an `sgc-brain/1` pack.
 
 Not all YAML fields can be stored as Chroma metadata (Chroma supports string, int, float, bool — not nested objects or lists). The following fields are flattened for Chroma storage:
 
