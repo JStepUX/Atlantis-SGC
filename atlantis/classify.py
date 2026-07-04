@@ -58,8 +58,15 @@ Field rules:
 - topics: 2-6 entries, kebab-case, ordered most-specific first. depth scale:
   0=this chunk is ABOUT this topic, 1=immediate context/frame, 2=the discipline/domain,
   3=the broader field, 4=the widest category. Not every depth must be used.
-- aliases: 0-4 same-concept/different-name mappings. If you have to wonder whether
-  it's an alias, leave it out. Empty object {} is fine.
+- aliases: 0-4 entries mapping OTHER NAMES for what this chunk covers to the
+  name the chunk itself uses. Their purpose is search: a reader looks things up
+  in THEIR OWN words, which may never appear in this text — an alias is the
+  bridge. Good aliases: domain jargon <-> everyday name, abbreviations and
+  expansions, romanized/foreign-language terms, community nicknames, older or
+  regional names. USELESS aliases (never emit these): words already present in
+  the chunk text, inflections of those words (plural/tense variants match
+  anyway), or generic category words. If you have to wonder whether it's an
+  alias, leave it out. Empty object {} is fine.
 - goal_affinity: 1-4 {domain, weight} pairs; weight 0..1 = how strongly a chunk
   supports an agent pursuing that domain. If everything is relevant, nothing is.
 - utility: procedural=HOW; declarative=WHAT; contextual=WHY-now; orienting=WHERE-in-bigger-picture.
