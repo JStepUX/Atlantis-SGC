@@ -29,8 +29,23 @@ of documented:
   cross-cutting, environmental, or a one-shot heads-up that has no natural
   home in the codebase.
 
-## (no entries yet)
+## `related_chunks` is empty by design for a thematically diverse corpus (first ingest run, 2026-06-27)
 
-This is a fresh boilerplate — no gotchas have been recorded yet. Entries
-accumulate below as agents hit surprises while building on this scaffold. The
-first real entry replaces this placeholder.
+Seeing `related_chunks: []` on every chunk after an ingest looks like the relate
+stage is broken, but it usually isn't. `_compute_related` in `atlantis/pipeline.py`
+only links chunks **across different documents** (it skips same-`document_slug`
+pairs) and requires an **exact topic-string Jaccard ≥ `related_min_overlap`**
+(default 0.20, `config.py` `SalienceConfig`). Because the classifier coins
+specific, per-chunk topic strings, two documents on unrelated subjects share zero
+exact topic strings, so the intersection is empty and the threshold never even
+applies. This is expected: relations populate only when documents genuinely share
+topic vocabulary. Confirm before "fixing" by diffing topic sets across documents
+(empty cross-document intersection ⇒ empty `related_chunks` is correct).
+## The PATH `python` is not the project interpreter (brain-pack export, 2026-07-04)
+
+On this machine `python` on PATH resolves to an unrelated agent venv
+(3.11, no numpy/chromadb), so `python tests/test_pipeline.py` fails at import.
+The interpreter with this project's dependencies is
+`C:\Users\virtu\AppData\Local\Python\pythoncore-3.14-64\python.exe` (matches
+"developed on 3.14" in CLAUDE.md). Use it explicitly for `-m atlantis` and the
+tests; `py -0` lists nothing useful here.

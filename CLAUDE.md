@@ -18,7 +18,7 @@ and load when triggered.
 ## Project identity
 
 Atlantis is a single Python package, `atlantis/`, driven by a CLI
-(`python -m atlantis <ingest|query|doctor>`). The pipeline is a fixed sequence:
+(`python -m atlantis <ingest|query|doctor|export>`). The pipeline is a fixed sequence:
 **discover → chunk → TF-IDF salience → classify → relate → index → assemble →
 Chroma** (see `atlantis/pipeline.py`). Chunking is deterministic; only the
 **classification** stage calls a model — a local **KoboldCPP / Gemma** server over
@@ -26,7 +26,9 @@ its OpenAI-compatible endpoint (`config/atlantis.toml [model]`). Embeddings use
 Chroma's bundled ONNX MiniLM (not a remote API). Outputs land under `Data/`
 (`chunks/`, `chroma/`, `index.json`, `index.md`); raw inputs go in `Data/raw/`.
 The frontmatter schema each chunk must satisfy is the load-bearing contract —
-`atlantis/schema.py` assembles and validates it.
+`atlantis/schema.py` assembles and validates it. `export` maps active chunks
+onto an `sgc-brain/1` knowledge pack for the sibling SGC repo
+(`atlantis/export.py`) — lexical fields only; embeddings never cross.
 
 ## Stack
 
