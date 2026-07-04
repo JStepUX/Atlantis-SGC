@@ -156,6 +156,9 @@ def run_ingest(
                 write_chunk_file(c, cfg.paths.chunks_dir)
 
         md_text = index_data.pop("_md_text", "")
+        # Record which classifier built this corpus so the exporter can stamp
+        # source.stub from disk instead of trusting an operator-supplied flag.
+        index_data["backend"] = report.backend
         cfg.paths.index_json.parent.mkdir(parents=True, exist_ok=True)
         cfg.paths.index_json.write_text(
             json.dumps(index_data, indent=2, ensure_ascii=False), encoding="utf-8"

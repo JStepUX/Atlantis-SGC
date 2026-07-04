@@ -5,6 +5,7 @@
   python -m atlantis ingest --limit 5  # only the first 5 chunks
   python -m atlantis query "kimura grip"   # sanity-check retrieval
   python -m atlantis doctor            # check config, model reachability, deps
+  python -m atlantis export --out pack.json   # chunks -> sgc-brain/1 pack
 """
 
 from __future__ import annotations
@@ -102,6 +103,51 @@ def _cmd_doctor(args) -> int:
     return 0 if deps_ok else 1
 
 
+def _cmd_export(args) -> int:
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from .export import build_pack, read_backend_stub, validate_pack, write_pack
+    from .textutils import slugify
+
+    cfg = load_config(args.config)
+    out_path = Path(args.out)
+    pack_id = args.id or slugify(out_path.stem)
+    stub = read_backend_stub(cfg.paths.index_json)
+    built_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    pack = build_pack(
+        cfg.paths.chunks_dir,
+        pack_id=pack_id,
+        name=args.name or pack_id,
+        description=args.description or "",
+        version=args.pack_version,
+        stub=stub,
+        built_at=built_at,
+    )
+    if not args.description:
+        docs = {c["source"]["doc"] for c in pack["chunks"]}
+        pack["description"] = (
+            f"{len(docs)} documents / {len(pack['chunks'])} chunks "
+            f"exported from Atlantis"
+        )
+
+    problems = validate_pack(pack)
+    print("=== Export summary ===")
+    print(f"  chunks dir : {cfg.paths.chunks_dir}")
+    print(f"  pack id    : {pack['id']}  (name: {pack['name']})")
+    print(f"  chunks     : {len(pack['chunks'])}")
+    print(f"  stub build : {pack['source']['stub']}")
+    if problems:
+        print("  --- problems (pack NOT written) ---")
+        for p in problems[:10]:
+            print(f"    ! {p}")
+        return 1
+    write_pack(pack, out_path)
+    print(f"  written    : {out_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlantis", description="Atlantis salience pipeline")
     parser.add_argument("--config", default=None, help="path to atlantis.toml")
@@ -121,6 +167,14 @@ def main(argv: list[str] | None = None) -> int:
 
     p_doc = sub.add_parser("doctor", help="check environment, deps, model")
     p_doc.set_defaults(func=_cmd_doctor)
+
+    p_exp = sub.add_parser("export", help="export chunks as an sgc-brain/1 knowledge pack")
+    p_exp.add_argument("--out", required=True, help="output .json path (stem = default pack id)")
+    p_exp.add_argument("--id", default=None, help="pack id [a-z0-9-]{1,64}")
+    p_exp.add_argument("--name", default=None, help="display name")
+    p_exp.add_argument("--description", default=None, help="pack description")
+    p_exp.add_argument("--pack-version", default="1.0", help="pack author's version string")
+    p_exp.set_defaults(func=_cmd_export)
 
     args = parser.parse_args(argv)
     return args.func(args)
