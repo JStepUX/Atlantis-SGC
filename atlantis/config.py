@@ -24,6 +24,7 @@ class PathsConfig:
     chroma_dir: Path
     index_json: Path
     index_md: Path
+    archive_dir: Path
 
 
 @dataclass
@@ -125,6 +126,7 @@ def load_config(path: str | Path | None = None) -> Config:
         chroma_dir=_resolve(p.get("chroma_dir", "Data/chroma")),
         index_json=_resolve(p.get("index_json", "Data/index.json")),
         index_md=_resolve(p.get("index_md", "Data/index.md")),
+        archive_dir=_resolve(p.get("archive_dir", "Data/archive")),
     )
 
     return Config(

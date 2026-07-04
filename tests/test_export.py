@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from atlantis.config import load_config  # noqa: E402
 from atlantis.export import (  # noqa: E402
+    archive_build,
     build_pack,
     flatten_aliases,
     parse_chunk_file,
@@ -172,6 +173,63 @@ def test_fence_in_body_and_status_filter_and_aliases():
         assert validate_pack(pack) == []
 
 
+def test_export_archive_retires_the_corpus():
+    import shutil
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+        tmp = Path(td)
+        cfg = _make_config(tmp)
+        # --archive MOVES the raw docs, so ingest from a disposable COPY of
+        # the fixtures — never the originals.
+        cfg.paths.raw_dir = tmp / "raw"
+        shutil.copytree(FIXTURES, cfg.paths.raw_dir)
+        cfg.paths.archive_dir = tmp / "archive"
+        run_ingest(cfg, use_stub=True, write_files=True, reporter=NullReporter())
+
+        pack = _build(cfg)
+        out = tmp / "my-brain.json"
+        write_pack(pack, out)
+
+        kwargs = dict(
+            raw_dir=cfg.paths.raw_dir,
+            chunks_dir=cfg.paths.chunks_dir,
+            index_json=cfg.paths.index_json,
+            index_md=cfg.paths.index_md,
+            pack_path=out,
+            archive_root=cfg.paths.archive_dir,
+            pack_id=pack["id"],
+            built_at=BUILT_AT,
+        )
+        dest = archive_build(**kwargs)
+
+        # The bundle is self-contained: sources + chunks + provenance + pack copy.
+        assert (dest / "my-brain.json").exists()
+        assert len(list((dest / "raw").iterdir())) == 3
+        assert len(list((dest / "chunks").glob("*.md"))) == len(pack["chunks"])
+        assert (dest / "index.json").exists()
+
+        # Working dirs are emptied but present; the stamp left with its build.
+        assert list(cfg.paths.raw_dir.iterdir()) == []
+        assert list(cfg.paths.chunks_dir.iterdir()) == []
+        assert not cfg.paths.index_json.exists()
+        # The pack at --out is untouched (the archive holds a COPY).
+        assert out.exists()
+
+        # Exporting from the now-clean slate fails loudly, never silently
+        # builds an empty pack — the mistake the flag exists to prevent.
+        empty = build_pack(
+            cfg.paths.chunks_dir,
+            pack_id="again", name="n", description="d", version="1",
+            stub=False, built_at=BUILT_AT,
+        )
+        assert any("no active chunks" in p for p in validate_pack(empty))
+
+        # Same id + stamp again -> a suffixed sibling, never an overwrite.
+        dest2 = archive_build(**kwargs)
+        assert dest2 != dest
+        assert dest2.name.startswith(pack["id"])
+
+
 def test_validate_pack_catches_contract_breaks():
     base = {
         "schema": "sgc-brain/1",
@@ -216,5 +274,6 @@ if __name__ == "__main__":
     test_stub_export_is_pack_valid()
     test_missing_index_json_defaults_to_not_stub()
     test_fence_in_body_and_status_filter_and_aliases()
+    test_export_archive_retires_the_corpus()
     test_validate_pack_catches_contract_breaks()
     print("OK: all export tests passed")

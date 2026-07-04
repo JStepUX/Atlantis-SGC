@@ -5,7 +5,7 @@ The working loop:
   python -m atlantis ingest --stub     # raw docs -> chunk files (no model)
   python -m atlantis ingest            # same, with KoboldCPP enrichment
   (hand-edit aliases/frontmatter in Data/chunks/*.md as needed)
-  python -m atlantis export --out pack.json   # chunks -> sgc-brain/1 pack
+  python -m atlantis export --out pack.json --archive   # chunks -> pack, corpus retired
   python -m atlantis doctor            # pack-readiness + environment check
 
 Dormant Phase 2b infrastructure (not part of the pack contract):
@@ -177,6 +177,24 @@ def _cmd_export(args) -> int:
         return 1
     write_pack(pack, out_path)
     print(f"  written    : {out_path}")
+
+    # --archive: retire the corpus only AFTER a successful pack write, so a
+    # failed export never eats the sources it failed to export.
+    if args.archive:
+        from .export import archive_build
+
+        dest = archive_build(
+            raw_dir=cfg.paths.raw_dir,
+            chunks_dir=cfg.paths.chunks_dir,
+            index_json=cfg.paths.index_json,
+            index_md=cfg.paths.index_md,
+            pack_path=out_path,
+            archive_root=cfg.paths.archive_dir,
+            pack_id=pack["id"],
+            built_at=built_at,
+        )
+        print(f"  archived   : {dest}")
+        print("               (raw + chunks + index.json moved, pack copied — working dirs clean for the next brain)")
     return 0
 
 
@@ -215,6 +233,13 @@ def main(argv: list[str] | None = None) -> int:
     p_exp.add_argument("--name", default=None, help="display name")
     p_exp.add_argument("--description", default=None, help="pack description")
     p_exp.add_argument("--pack-version", default="1.0", help="pack author's version string")
+    p_exp.add_argument(
+        "--archive",
+        action="store_true",
+        help="after a successful export, retire the corpus: move raw docs, chunk files, and "
+        "index.json into <archive_dir>/<pack-id>_<stamp>/ with a copy of the pack — "
+        "clean slate for the next brain (skip this flag to keep re-exporting the same corpus)",
+    )
     p_exp.set_defaults(func=_cmd_export)
 
     args = parser.parse_args(argv)

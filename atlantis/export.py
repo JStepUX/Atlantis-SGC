@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -148,3 +149,47 @@ def write_pack(pack: dict[str, Any], out_path: Path) -> None:
         json.dumps(pack, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
         encoding="utf-8",
     )
+
+
+def archive_build(
+    *,
+    raw_dir: Path,
+    chunks_dir: Path,
+    index_json: Path,
+    index_md: Path,
+    pack_path: Path,
+    archive_root: Path,
+    pack_id: str,
+    built_at: str,
+) -> Path:
+    """Retire a built corpus into a self-contained archive bundle.
+
+    Called only after a successful pack write (`export --archive`). MOVES the
+    raw docs, chunk files, and index.json/index.md into
+    ``<archive_root>/<pack_id>_<stamp>/`` and drops a COPY of the exported
+    pack beside them — one directory that can reproduce or audit the brain.
+    The working dirs are left empty (but present) so the next brain starts
+    from a clean slate: no stale chunks bleeding into the next pack, no stale
+    backend stamp mislabeling the next corpus's stub provenance.
+
+    The Chroma dir (--full builds) is deliberately NOT moved: it's dormant
+    Phase 2b state and live DB handles make moving it unreliable.
+    """
+    stamp = built_at.replace("-", "").replace(":", "")
+    dest = archive_root / f"{pack_id}_{stamp}"
+    n = 2
+    while dest.exists():
+        dest = archive_root / f"{pack_id}_{stamp}_{n}"
+        n += 1
+    (dest / "raw").mkdir(parents=True)
+    (dest / "chunks").mkdir()
+
+    shutil.copy2(pack_path, dest / pack_path.name)
+    for src_dir, sub in ((raw_dir, "raw"), (chunks_dir, "chunks")):
+        if src_dir.exists():
+            for item in sorted(src_dir.iterdir()):
+                shutil.move(str(item), str(dest / sub / item.name))
+    for f in (index_json, index_md):
+        if f.exists():
+            shutil.move(str(f), str(dest / f.name))
+    return dest

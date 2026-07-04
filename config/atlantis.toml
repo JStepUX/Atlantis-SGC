@@ -13,6 +13,7 @@ chunks_dir  = "Data/chunks"   # output: chunk files with frontmatter — THE exp
 chroma_dir  = "Data/chroma"   # output: Chroma DB (--full ingests only; not a pack input)
 index_json  = "Data/index.json"
 index_md    = "Data/index.md"
+archive_dir = "Data/archive"   # `export --archive` retires each built corpus here
 
 [chunking]
 target_tokens = 320   # preferred chunk size

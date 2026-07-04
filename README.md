@@ -94,8 +94,13 @@ python -m atlantis ingest --stub       # fully offline, no model; pack reports s
 #    NOTE: re-running ingest REGENERATES chunk files and destroys hand edits.
 #    Edit AFTER your final ingest; re-ingest only when the source docs change.
 
-# 5. Export the pack (filename stem = default pack id)
-python -m atlantis export --out my-brain.json --name "My Brain" --description "..."
+# 5. Export the pack (filename stem = default pack id). --archive then retires
+#    the corpus: raw docs + chunk files + index.json move to
+#    Data/archive/<pack-id>_<stamp>/ with a copy of the pack, leaving the
+#    working dirs clean for the next brain — so stale chunks can never bleed
+#    into the next pack. (Runs only after a successful export; omit the flag
+#    while you still want to re-export the same corpus.)
+python -m atlantis export --out my-brain.json --name "My Brain" --description "..." --archive
 
 # 6. Import my-brain.json in SGC ("Begin again" -> Mount brains -> Import pack…)
 #    Re-exporting with the same id overwrites on import — the edit/re-export loop.
