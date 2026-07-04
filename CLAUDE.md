@@ -120,7 +120,10 @@ bash scripts/agent/read-docs.sh --index     # vendored docs + Context7 coverage
 - For multi-line commit messages, use a heredoc so the shell doesn't mangle the body.
 - **Prefer a new commit over amending.** The one sanctioned exception is
   `release-prep`'s post-commit SHA fixup (it flags the amend in its report).
-- Commit only when asked. If you're on the default branch, branch first.
+- Commit only when asked. **Solo repo — commit on `main` directly.** (This
+  overrides the harness's branch-first default, same as the sibling SGC repo:
+  there's no review workflow that benefits from feature branches, and stray
+  branches just accumulate. The developer confirmed this convention 2026-07-04.)
 - **Pre-commit gate:** `.claude/hooks/pre-commit-gate.mjs` blocks `git commit`
   until `/pre-commit-qa` has run for the current branch within the last 10
   minutes — **but only once its `PreToolUse` entry exists in
