@@ -2,6 +2,7 @@
 
 The working loop:
 
+  python -m atlantis import-confluence <export-dir>   # Confluence HTML export -> raw markdown
   python -m atlantis ingest --stub     # raw docs -> chunk files (no model)
   python -m atlantis ingest            # same, with KoboldCPP enrichment
   (hand-edit aliases/frontmatter in Data/chunks/*.md as needed)
@@ -198,6 +199,36 @@ def _cmd_export(args) -> int:
     return 0
 
 
+def _cmd_import_confluence(args) -> int:
+    from pathlib import Path
+
+    try:
+        from .confluence import import_space_export
+    except ImportError as e:
+        print(f"import-confluence needs lxml (`pip install lxml`): {e}")
+        return 1
+
+    cfg = load_config(args.config)
+    export_dir = Path(args.export_dir)
+    if not export_dir.exists():
+        print(f"export dir not found: {export_dir}")
+        return 1
+    out_dir = Path(args.out) if args.out else cfg.paths.raw_dir
+
+    report = import_space_export(export_dir, out_dir, min_words=args.min_words)
+    print("=== Confluence import summary ===")
+    print(f"  export dir : {export_dir}")
+    print(f"  out dir    : {out_dir}")
+    print(f"  converted  : {report.converted} pages -> markdown")
+    print(f"  skipped    : {report.skipped_stubs} stubs (<{args.min_words} words), "
+          f"{len(report.skipped_files) - report.skipped_stubs} unparseable")
+    if args.verbose and report.skipped_files:
+        for s in report.skipped_files:
+            print(f"    - {s}")
+    print("  next       : review the .md files, then `python -m atlantis ingest`")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="atlantis", description="Atlantis salience pipeline")
     parser.add_argument("--config", default=None, help="path to atlantis.toml")
@@ -226,6 +257,16 @@ def main(argv: list[str] | None = None) -> int:
 
     p_doc = sub.add_parser("doctor", help="pack-readiness + environment check")
     p_doc.set_defaults(func=_cmd_doctor)
+
+    p_conf = sub.add_parser(
+        "import-confluence",
+        help="convert a Confluence HTML space export into raw markdown docs",
+    )
+    p_conf.add_argument("export_dir", help="path to the export (the folder holding the space's .html pages)")
+    p_conf.add_argument("--out", default=None, help="output dir for .md files (default: [paths] raw_dir)")
+    p_conf.add_argument("--min-words", type=int, default=10, help="skip pages with fewer body words (stubs)")
+    p_conf.add_argument("--verbose", action="store_true", help="list every skipped page")
+    p_conf.set_defaults(func=_cmd_import_confluence)
 
     p_exp = sub.add_parser("export", help="export chunks as an sgc-brain/1 knowledge pack")
     p_exp.add_argument("--out", required=True, help="output .json path (stem = default pack id)")
