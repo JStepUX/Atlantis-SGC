@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .config import ROOT, ChunkingConfig
 from .models import Chunk, Document
-from .textutils import estimate_tokens, slugify
+from .textutils import estimate_tokens, scrub_brackets, slugify
 
 RAW_EXTENSIONS = {".md", ".markdown", ".txt", ".text"}
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
@@ -34,7 +34,7 @@ def discover_documents(raw_dir: Path) -> list[Document]:
     for path in sorted(raw_dir.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in RAW_EXTENSIONS:
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = scrub_brackets(path.read_text(encoding="utf-8", errors="replace"))
         slug = slugify(path.stem)
         try:
             rel = path.relative_to(ROOT).as_posix()

@@ -99,8 +99,60 @@ def test_topic_path_and_specificity_derivation():
     assert derive_specificity(topics) == round(2 / 3, 3)
 
 
+def test_scrub_brackets_unit():
+    from atlantis.textutils import scrub_brackets
+
+    # Wikipedia-style citation markers, editorial tags, and a note ref.
+    src = "The kimura[1] is a lock.[12][note 3] See [edit] more [citation needed] here."
+    assert scrub_brackets(src) == "The kimura is a lock. See more here."
+    # Markdown link labels (Confluence import output) survive intact.
+    assert scrub_brackets("Keep [this](http://x) drop [4].") == "Keep [this](http://x) drop."
+    # Nested groups peel to nothing; newlines are never swallowed.
+    assert scrub_brackets("a\n[[Category:X]]\nb") == "a\n\nb"
+    # Idempotent and deterministic.
+    once = scrub_brackets(src)
+    assert scrub_brackets(once) == once
+
+
+def test_ingest_scrubs_bracket_noise_end_to_end():
+    from atlantis.chunking import discover_documents
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        raw = tmp / "raw"
+        raw.mkdir()
+        (raw / "wiki-paste.md").write_text(
+            "# Kimura (grappling)[edit]\n\n"
+            "The kimura[1][2] is a double joint lock.[citation needed] "
+            "It targets the shoulder [a] and elbow.[3]\n\n"
+            "See [the guide](http://example.test/guide) for more.[4]\n",
+            encoding="utf-8",
+        )
+        docs = discover_documents(raw)
+        assert len(docs) == 1
+        assert docs[0].title == "Kimura (grappling)"
+        assert "[" not in docs[0].text.replace("[the guide](", "")
+
+        cfg = _make_config(tmp)
+        cfg.paths.raw_dir = raw
+        run_ingest(cfg, use_stub=True, reporter=NullReporter())
+        bodies = [
+            p.read_text(encoding="utf-8") for p in (tmp / "chunks").rglob("*.md")
+        ]
+        assert bodies, "ingest wrote no chunk files"
+        for chunk_file in bodies:
+            # Frontmatter legitimately contains YAML lists ("related_chunks: []");
+            # only the body below the closing delimiter must be bracket-free.
+            body = chunk_file.split("\n---\n", 2)[-1]
+            stripped = body.replace("[the guide](", "")
+            assert "[" not in stripped and "]" not in stripped, body
+            assert "[the guide](http://example.test/guide)" in body
+
+
 if __name__ == "__main__":
     test_stub_ingest_compile_mode_is_schema_valid()
     test_stub_ingest_full_mode_runs_the_phase2b_tail()
     test_topic_path_and_specificity_derivation()
+    test_scrub_brackets_unit()
+    test_ingest_scrubs_bracket_noise_end_to_end()
     print("OK: all smoke tests passed")

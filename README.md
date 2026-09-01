@@ -37,7 +37,7 @@ Data/raw/*.md ──▶ chunk ──▶ classify (Gemma or --stub) ──▶ ass
 
 | Stage | Module | What it produces | Runs |
 |---|---|---|---|
-| Discover + chunk | `chunking.py` | identity, navigation, heading-aware bodies, token counts | always |
+| Discover + chunk | `chunking.py` | identity, navigation, heading-aware bodies, token counts; `[...]` noise (citation markers, `[edit]`) scrubbed at read time, markdown link labels kept | always |
 | Classify | `classify.py` | `summary`, `topics`, `aliases` (pack fields) + `chunk_type`, `goal_affinity`, `utility`, `authority`, `confidence`, `standalone` | always |
 | Assemble | `schema.py` | ordered frontmatter, `topic_path`, `specificity`, validation | always |
 | Export | `export.py` | the `sgc-brain/1` pack (active chunks, lexical fields, stub provenance) | on `export` |

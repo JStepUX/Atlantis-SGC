@@ -26,6 +26,29 @@ STOPWORDS: frozenset[str] = frozenset(
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9'+-]*")
 
+# Square-bracket noise: Wikipedia-style citation markers ([1], [12], [a]),
+# editorial tags ([edit], [citation needed], [update]), and anything else
+# bracketed on a single line. Preceding horizontal whitespace is eaten so
+# "word [1] next" collapses to "word next". A group directly followed by "("
+# is a markdown link label ("[label](href)", which the Confluence importer
+# emits) and is left alone — scrubbing it would leave a bare "(href)".
+_BRACKET_NOISE_RE = re.compile(r"[ \t]*\[[^\[\]\n]*\](?!\()")
+
+
+def scrub_brackets(text: str) -> str:
+    """Remove ``[...]`` groups (citation markers, editorial tags) from raw text.
+
+    Applied once at discovery so titles, chunk bodies, and token counts all
+    see the scrubbed text. Deterministic and idempotent. Markdown link labels
+    (``[label](href)``) survive. Nested groups (``[[Category:X]]``) are peeled
+    inside-out until nothing bracketed remains.
+    """
+    while True:
+        scrubbed = _BRACKET_NOISE_RE.sub("", text)
+        if scrubbed == text:
+            return scrubbed
+        text = scrubbed
+
 
 def slugify(text: str) -> str:
     """Lowercase ascii slug: 'Brazilian Jiu-Jitsu' -> 'brazilian-jiu-jitsu'."""
