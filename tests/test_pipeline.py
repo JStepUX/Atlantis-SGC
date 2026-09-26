@@ -149,10 +149,50 @@ def test_ingest_scrubs_bracket_noise_end_to_end():
             assert "[the guide](http://example.test/guide)" in body
 
 
+def test_classify_final_retry_samples_hotter():
+    """Only the last attempt uses retry_temperature, and a hot success counts as ok."""
+    from atlantis.chunking import chunk_document, discover_documents
+    from atlantis.classify import KoboldClassifier
+
+    cfg = load_config()
+    cfg.model.retries = 2
+    cfg.model.retry_temperature = 0.9
+    chunk = chunk_document(discover_documents(FIXTURES)[0], cfg.chunking)[0]
+
+    def run(replies):
+        clf = KoboldClassifier(cfg)
+        temps: list = []
+        it = iter(replies)
+
+        def fake_call(_chunk, temperature=None):
+            temps.append(temperature)
+            return next(it)
+
+        clf._call = fake_call  # type: ignore[method-assign]
+        return clf.classify(chunk), temps
+
+    # Every attempt unparseable -> fallback; only the final attempt was hot.
+    result, temps = run(["[]"] * 3)
+    assert temps == [None, None, 0.9], temps
+    assert result.get("_fallback") == "unparseable JSON"
+
+    # Rescued by the hot attempt -> a real result, no fallback flag.
+    good = '{"summary": "s", "topics": [{"topic": "t", "depth": 0}]}'
+    result, temps = run(["[]", "[]", good])
+    assert temps == [None, None, 0.9], temps
+    assert "_fallback" not in result and result["summary"] == "s"
+
+    # No retries configured -> the single attempt is never hot.
+    cfg.model.retries = 0
+    _, temps = run(["[]"])
+    assert temps == [None], temps
+
+
 if __name__ == "__main__":
     test_stub_ingest_compile_mode_is_schema_valid()
     test_stub_ingest_full_mode_runs_the_phase2b_tail()
     test_topic_path_and_specificity_derivation()
     test_scrub_brackets_unit()
     test_ingest_scrubs_bracket_noise_end_to_end()
+    test_classify_final_retry_samples_hotter()
     print("OK: all smoke tests passed")

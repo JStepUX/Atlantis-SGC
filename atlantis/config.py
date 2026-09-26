@@ -44,6 +44,7 @@ class ModelConfig:
     max_tokens: int = 1024
     timeout: int = 120
     retries: int = 2
+    retry_temperature: float = 0.7  # final attempt only; breaks deterministic bad paths
 
 
 @dataclass

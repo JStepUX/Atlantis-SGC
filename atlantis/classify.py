@@ -274,7 +274,7 @@ class KoboldClassifier:
         except requests.RequestException as e:
             return False, f"unreachable ({models_url}): {e}"
 
-    def _call(self, chunk: Chunk) -> str:
+    def _call(self, chunk: Chunk, temperature: float | None = None) -> str:
         headers = {"Content-Type": "application/json"}
         if self.cfg.model.api_key:
             headers["Authorization"] = f"Bearer {self.cfg.model.api_key}"
@@ -284,7 +284,7 @@ class KoboldClassifier:
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": _user_prompt(chunk)},
             ],
-            "temperature": self.cfg.model.temperature,
+            "temperature": self.cfg.model.temperature if temperature is None else temperature,
             "max_tokens": self.cfg.model.max_tokens,
             "response_format": {"type": "json_object"},
         }
@@ -297,9 +297,17 @@ class KoboldClassifier:
 
     def classify(self, chunk: Chunk) -> dict:
         last_err = "no attempt"
-        for attempt in range(self.cfg.model.retries + 1):
+        attempts = self.cfg.model.retries + 1
+        for attempt in range(attempts):
+            # At low temperature a failing chunk tends to fail identically on
+            # every retry (KJV ingest, 2026-09-26: Gemma answered a bare "[]"
+            # for 9 chunks, 3/3 times), so the final attempt samples hotter to
+            # escape that path. A first attempt is never hot.
+            hot = attempts > 1 and attempt == attempts - 1
             try:
-                content = self._call(chunk)
+                content = self._call(
+                    chunk, self.cfg.model.retry_temperature if hot else None
+                )
             except (requests.RequestException, KeyError, ValueError) as e:
                 last_err = f"transport: {e}"
                 continue

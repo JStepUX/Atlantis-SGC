@@ -177,7 +177,9 @@ suite — the two repos test the contract from both ends.)
   the classifier backend into `index.json`; export derives `source.stub` from
   it. A missing stamp degrades conservatively to `stub: false`.
 - **Robust classification.** Malformed model JSON never crashes ingest: output is
-  parsed defensively, coerced against the schema enums, retried, and finally falls
+  parsed defensively, coerced against the schema enums, retried (the final retry at
+  `retry_temperature`, since a chunk that fails at low temperature tends to fail
+  identically every time), and finally falls
   back to safe low-confidence defaults (surfaced in the run summary as
   `classify fallbacks`).
 - **Token counts** default to a fast offline estimate (`tokens.mode = "estimate"`).

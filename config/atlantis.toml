@@ -30,6 +30,8 @@ temperature = 0.2
 max_tokens  = 1024
 timeout     = 120     # seconds per classification call
 retries     = 2       # JSON-parse / transport retries before falling back to defaults
+retry_temperature = 0.7  # the FINAL attempt samples hotter: at 0.2 a chunk that fails once
+                         # tends to fail identically every time (Gemma emitting a bare "[]")
 
 [embeddings]
 # Phase 2b only (`ingest --full`). Chroma's built-in all-MiniLM-L6-v2 (ONNX).
